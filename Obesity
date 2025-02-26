@@ -1,0 +1,537 @@
+                               /*"Predicting Obesity Level based on Health and Lifestyle Factors";
+
+The business problem for this analysis could be developing a prediction model to identify individuals at risk of obesity based on their 
+characteristics and behaviors. This could be useful for healthcare providers, insurers, and public health organizations to target 
+interventions and support for individuals who are likely to develop obesity or are already overweight. By predicting obesity levels, healthcare 
+providers can offer personalized treatment plans and interventions to prevent or manage obesity-related health issues. Insurers can use this 
+information to offer tailored wellness programs and incentives to encourage healthy behaviors. Public health organizations can use this data to 
+understand trends in obesity and develop targeted interventions to address the problem at a population level. 
+Ultimately, the goal of this analysis would be to improve individual health outcomes and reduce the overall burden of obesity on society.
+
+Questions for this analysis:
+1.Can we predict the likelihood of obesity based on variables such as family history with overweight, high caloric food consumption, and 
+physical activity level?
+2. How does gender impact obesity levels in individuals?
+3. Are there any relationships between eating habits (such as main meals daily, vegetable consumption, and snacking between meals) and obesity levels?
+4. Can we classify individuals into different obesity levels based on their demographic and lifestyle factors?
+5.Is there a correlation between alcohol consumption and obesity levels?
+6.How do factors like smoking, daily water intake, and use of tech devices impact obesity levels?
+7.Can we predict the risk of obesity based on a combination of variables such as transportation mode used, monitor calories, and physical activity 
+level?*/
+
+
+
+/*import the data*/
+proc import datafile='C:\Users\DELL\Desktop\ObesityDataSet_raw_and_data_sinthetic.csv'
+out=sweta.obesity
+dbms=csv replace;
+run;
+
+proc print data=sweta.obesity (obs=10);
+run;
+/*explore data*/
+proc contents data=work.obesity;
+run;
+
+/*rename variables*/
+data work.health ;
+set sweta.obesity;
+rename Gender = Gender
+       Age = Age
+       Height = Height
+       Weight = Weight
+       family_history_with_overweight = Family_History
+       FAVC = High_Caloric_Food
+       FCVC = Eat_Vegetables
+       NCP = Main_Meals_Daily
+       CAEC = Eat_Between_Meals
+       SMOKE = Smoke
+       CH2O = Water_Daily
+       SCC = Monitor_Calories
+       FAF = Physical_Activity
+       TUE = Tech_Device_Time
+       CALC = Drink_Alcohol
+       MTRANS = Transportation_Used
+       NObeyesdad = Obesity_Level;
+run;
+/*print observation*/
+proc print data=work.health (obs=5);
+run;
+/*check frequency of categorical variables*/
+proc freq data= work.health;
+tables Gender Family_History High_Caloric_Food Eat_Between_Meals SMOKE Monitor_Calories Drink_Alcohol Transportation_Used Obesity_Level;
+run;
+
+/*MERGE THE CATEGORIES WHICH ARE LESS FREQUENT AND CLOSEBY variables*/
+data work.health;
+   set work.health;
+   /* Merge groups with less frequency in Drink_Alcohol variable */ 
+    IF Drink_Alcohol = "Always" OR Drink_Alcohol = "Frequently" OR Drink_Alcohol = "Sometimes" THEN Drink_Alcohol = "yes";
+      ELSE Drink_Alcohol = "no";
+
+   /* Merge groups with less frequency in transportation_used variable */
+   if Transportation_Used ='Bike' then Transportation_Used='Automobile';
+    if Transportation_Used ='Motorbike' then Transportation_Used='Automobile';
+
+    /* Merge groups with less frequency in Eat_between_meals variable */
+   if eat_between_meals in ("Always", "Frequently", "Sometimes") then eat_between_meals = "Yes"; 
+   else eat_between_meals = "No"; 
+    
+ /* Merge similar groups to one in obesity level variable */
+if obesity_level in ('Obesity_Type_I', 'Obesity_Type_II', 'Obesity_Type_III') 
+then obesity_level = 'Obese';
+if obesity_level in ('Overweight_Level_I', 'Overweight_Level_II') then obesity_level='Obese';
+if obesity_level = 'Insufficient_Weight' then obesity_level ='Normal_Weight';
+run;
+/*check frequency distribution*/
+proc freq data= work.health;
+tables Gender Family_History High_Caloric_Food Eat_Between_Meals SMOKE Monitor_Calories Drink_Alcohol Transportation_Used Obesity_Level;
+run;
+/*FIND MISSING VALUES*/
+/*find missing invalues for categorical variables*/
+proc freq data=work.health;
+tables Drink_Alcohol Eat_Between_Meals Family_History Gender High_Caloric_Food Monitor_Calories Obesity_Level SMOKE Transportation_Used/missing;
+run;
+
+/*find missing invalues for numeric variables*/
+proc means data=work.health nmiss;
+run;
+
+/*Check outliers with box-plot*/
+/*weight*/
+ods output sgplot=boxplot_data;
+proc sgplot data=work.health;
+vbox weight;
+run;
+ods output sgplot=boxplot_data;
+/*height*/
+proc sgplot data=work.health;
+vbox height;
+run;
+ods output sgplot=boxplot_data;
+/*age*/
+proc sgplot data=work.health;
+vbox age;
+run; 
+ods output sgplot=boxplot_data;
+/*main meals daily*/
+proc sgplot data=work.health;
+vbox Main_Meals_Daily ;
+run;
+ods output sgplot=boxplot_data;
+/*eat vegetables*/
+proc sgplot data=work.health;
+vbox Eat_Vegetables;
+run; 
+ods output sgplot=boxplot_data;
+/*water daily*/
+proc sgplot data=work.health;
+vbox Water_Daily;
+run;
+ods output sgplot=boxplot_data;
+/*physical activity*/
+proc sgplot data=work.health;
+vbox Physical_Activity;
+run;
+ods output sgplot=boxplot_data;
+/*tech device time*/
+proc sgplot data=work.health;
+vbox Tech_Device_Time;
+run;
+/*cap  outliers*/
+PROC MEANS DATA=work.health stackods n qrange p25 p75;
+var Age Main_meals_daily height weight;
+ods output summary=ranges;
+run;
+/*create macro for outliers*/
+%macro cap(dset=,var=, lower=, upper=);
+data &dset;
+	set &dset;
+	if &var>&upper then &var=&upper;
+	if &var<&lower then &var=&lower;
+run;
+%mend;
+/*Create dataset 'cutoffs' to store lower and upper bounds*/
+data cutoffs;
+set ranges;
+lower=p25-1.5*qrange;
+upper=p75+1.5*qrange;
+string = catt('%cap(dset=work.health, var=', variable, ", lower=", lower, ", upper=", upper ,");");
+/*Execute macro on outliers to cap values within lower and upper bounds */
+call execute(string);
+run;
+
+/*check outliers after capping of those variables which had outliers*/
+ods output sgplot=boxplot_data;
+proc sgplot data=work.health;
+vbox weight;
+run;
+ods output sgplot=boxplot_data;
+proc sgplot data=work.health;
+vbox height;
+run;
+ods output sgplot=boxplot_data;
+proc sgplot data=work.health;
+vbox age;
+run; 
+ods output sgplot=boxplot_data;
+proc sgplot data=work.health;
+vbox Main_Meals_Daily ;
+run;
+
+
+/*summary statistics*/
+proc means data=work.health;
+run;
+
+/*EXPLONATORY DATA ANALYSIS*/
+/* Correlation analysis */
+proc corr data=work.health ;
+   var Age height weight Eat_Vegetables Main_Meals_Daily Water_Daily Physical_Activity Tech_Device_Time;
+run;
+
+/*Univariate Analysis*/
+/*check normality for age*/
+proc univariate data=work.health;
+var age;
+histogram/normal;
+run;
+/*check normality for weight*/
+proc univariate data=work.health;
+var weight;
+histogram/normal;
+run;
+/*check normality for height*/
+proc univariate data=work.health;
+var height;
+histogram/normal;
+run;
+/* From the analysis there are no variables which are normally distributed*/
+
+/*Bivariate analysis*/
+/*chisquare test to test if people having high calorie food monitor calories or not?*/
+proc freq data=work.health;
+table monitor_calories;
+table high_caloric_food*monitor_calories/chisq;
+run;
+/*There is a significant association between high-caloric food consumption and monitoring calories. Those who do not monitor their calories are
+more likely to consume high-caloric foods compared to those who do monitor their calories.*/
+
+/*What is the relationship between smoking behavior and alcohol consumption among individuals*/
+proc freq data=work.health;
+table smoke;
+table drink_alcohol*smoke/chisq;
+run;
+/*There is a significant association between smoking and alcohol consumption. Smokers are more likely to consume alcohol compared to non-smokers.*/
+
+/*How does the frequency of eating between meals relate to obesity levels in the population?*/
+proc freq data=work.health;
+table obesity_level;
+table Eat_Between_Meals*obesity_level/chisq;
+run;
+/* There is no significant between both variables as both normal weight individuals and obese individuals are equally likely to consume between meals.*/
+
+/*How does the use of transportation correlate with different levels of obesity among individuals in the sample population?*/
+proc freq data=work.health;
+table obesity_level;
+table Transportation_Used*obesity_level/chisq;
+run;
+/*Individuals who use public transportation are more likely to be obese compared to those who use an automobile or walk.*/
+
+/*t-test to determine if there is a significant difference in age between the different obesity levels*/
+proc ttest data= work.health;
+class obesity_level;
+var age;
+run;
+/*There is a significant difference in the mean age between individuals with normal weight and obese individuals.*/
+
+/*What is the difference in weight between individuals with a family history of health issues and those without a family history*/
+proc ttest data= work.health;
+class family_history;
+var weight;
+run;
+/*There is a significant difference in weight between individuals with and without a family history of obesity.*/
+
+/*Differences in weights of males and females*/
+proc ttest data= work.health;
+class gender;
+var weight;
+run;
+/*There is a significant difference in weight between females and males*/
+
+/*Anova to check mean weight differs significantly between the different transportation groups*/
+proc anova data=work.health;
+class transportation_used;
+model weight=transportation_used;
+run;
+/*There is a significant relationship between the mode of transportation used and weight.*/
+
+/*Does gender have a significant effect on physical activity levels in the study population?*/
+proc anova data=work.health;
+class gender;
+model physical_activity=gender;
+run;
+/*There is a significant relationship between gender and physical activity level.*/
+
+
+/*multivariate analysis*/
+/*determine how physical activity may influence the likelihood of eating snacks between meals.*/
+proc genmod data=work.health descending;
+class eat_between_meals;
+model eat_between_meals=weight/
+dist=binomial link=logit;
+run;
+/*Results show that Weight is a significant predictor of eating between meals, with higher weight being associated with a higher likelihood of eating between meals.*/
+
+/*How does the frequency of main meals consumed daily predict the obesity level in individuals*/
+proc genmod data=work.health descending;
+class obesity_level;
+model obesity_level=Main_Meals_Daily/
+dist=binomial link=logit;
+run;
+/*Statistically sinificant results show that a higher frequency of main meals may be associated with a lower likelihood of obesity.*/
+
+/*What is the relationship between eating vegetables and obesity levels*/
+proc genmod data=work.health descending;
+class obesity_level;
+model obesity_level=eat_vegetables /
+dist=binomial link=logit;
+run;
+/*Vegetable consumption may not be significantly related to obesity in this model.*/
+
+/*What is the relationship between daily water consumption and obesity level*/
+proc genmod data=work.health descending;
+class obesity_level;
+model obesity_level = water_daily / 
+dist=binomial link=logit;
+run;
+
+
+/*What relationship does the amount of time spent using technological devices have on a person's weight*/
+proc glm data=work.health;
+model weight=tech_device_time;
+run;
+/*Statistically significant resulta show that higher water intake may be associated with a higher likelihood of obesity.*/
+
+/*What is the relationship between smoking status and obesity level*/
+proc logistic data=work.health; 
+class smoke;
+model obesity_level=smoke;
+run;
+/*Can height be used as a predictor for obesity levels in this model*/
+proc logistic data=work.health; 
+model obesity_level=height;
+run;
+
+
+/*plot graphs*/
+/*Target Variable*/
+proc sgplot data=work.health;
+vbar obesity_level;
+run;
+proc sgplot data=work.health;
+vbar obesity_level /group=transportation_used groupdisplay=cluster ;
+run;
+/*check relationship with height and weight*/
+proc sgplot data=work.health; 
+scatter x=Height y=Weight ; 
+run;
+/*those who drink alcohol also smokes?*/
+proc sgplot data=work.health;
+vbar smoke /group=drink_alcohol groupdisplay=cluster ;
+run;
+/*those who eat between meals also monitor calories*/
+proc sgplot data=work.health;
+vbar eat_between_meals /group=monitor_calories groupdisplay=cluster ;
+run;
+/*those who have high cloric food also monitor calories*/
+proc sgplot data=work.health;
+vbar high_caloric_food /group=monitor_calories groupdisplay=cluster ;
+run;
+/*check family history of obesity*/
+proc sgplot data=work.health;
+vbar obesity_level /group=family_history groupdisplay=cluster ;
+run;
+/*check obesity level of male nd female*/
+proc sgplot data=work.health;
+vbar obesity_level /group=gender groupdisplay=cluster ;
+run;
+
+
+
+/* Standardize & Normalize the numeric variables */
+proc standard data=work.health out=work.obesity mean=0 std=1;
+var Age Eat_Vegetables Main_Meals_Daily water_daily Physical_Activity  Tech_Device_Time Height weight;
+run;
+/*print the summary of normalized variables*/
+proc means data=work.obesity mean stddev ndec=2;
+var Age Eat_Vegetables Main_Meals_Daily water_daily Physical_Activity  Tech_Device_Time height weight;
+run;
+
+
+
+/*check multicollinearity*/
+/* Fit a logistic regression model */
+proc logistic data=work.health;
+class  Gender Family_History High_Caloric_Food Eat_Between_Meals SMOKE(ref='yes') Monitor_Calories Drink_Alcohol 
+  Transportation_Used Obesity_Level ;
+    model smoke= Gender Family_History High_Caloric_Food Eat_Between_Meals obesity_level Monitor_Calories Drink_Alcohol 
+  Transportation_Used height weight Age Eat_Vegetables Main_Meals_Daily water_daily Physical_Activity  Tech_Device_Time/ selection=stepwise;
+run;
+
+/* Calculate VIF for each predictor variable */
+proc reg data=work.health;
+    model weight = Age height Eat_Vegetables Main_Meals_Daily water_daily Physical_Activity  Tech_Device_Time / vif;
+run;
+/*no multicollinearity present between variables */
+
+/*HANDLE CLASS IMBALANCE*/
+/*check frequency of target variables*/
+proc freq data=work.health;
+tables Obesity_Level;
+run;
+/*balance the minority class by oversampling technique*/
+data balanced_obesity;
+set work.health;
+if Obesity_Level = 'Normal_Weight' then output;
+do i=1 to 5;
+output;
+end;
+run;
+/*check frequency of balanced target variable*/
+proc freq data=balanced_obesity;
+tables Obesity_Level;
+run;
+
+/*train-test split*/
+data train test; 
+set WORK.BALANCED_OBESITY; 
+if ranuni(0) < 0.8 then output train; 
+else output test; 
+run;
+/*model training logistic regression*/
+proc logistic data=train descending;
+   class Gender Family_History High_Caloric_Food Eat_Between_Meals smoke(ref='yes') 
+ Monitor_Calories Drink_Alcohol Transportation_Used Obesity_Level;
+  model Obesity_Level = Gender Family_History High_Caloric_Food 
+Eat_Between_Meals smoke Monitor_Calories Drink_Alcohol 
+   Transportation_Used  weight Age Eat_Vegetables Main_Meals_Daily water_daily 
+Physical_Activity Tech_Device_Time/aggregate=none 
+ link=logit selection=backward;
+score data=train out=predicted_train;
+run;
+
+/*
+The model showed good predictive performance with a high percent concordant (99.1%) and a high Somers' D statistic (0.981), indicating a strong association between predicted 
+probabilities and observed responses.*/
+
+/*predictions on train set*/
+data predicted_train;
+ set predicted_train;
+if  P_normal<P_obese then predicted_obesity_level = "Obese"; 
+else predicted_obesity_level = "Normal_Weight"; 
+run;
+/* Calculate accuracy fopr training set by predictions and true variables*/
+data scored_train;
+set predicted_train;
+true_obesity_level = obesity_level;
+predict_obesity_level = predicted_obesity_level;
+run;
+data scored_train;
+  set scored_train;
+  if true_obesity_level = predict_obesity_level then correct_prediction = 1;
+  else correct_prediction = 0;
+run;
+/*check accuracy*/
+proc means data=scored_train mean;
+  var correct_prediction;
+run;
+/*Results show that the mean of correct predictions is approximately 69.98%*/
+
+/*plor ROC curve on training set*/
+ods graphics on;
+title 'ROC curve for train set';
+proc logistic data=predicted_train plots(only)=(roc);
+model obesity_level =  Age Eat_Vegetables Main_Meals_Daily water_daily 
+Physical_Activity  Tech_Device_Time weight;
+run;
+ods graphics off;
+/*The AUC of 0.9823 suggests that the model has high discriminatory power in distinguishing between the two levels of the response variable (Normal_Weight and Obese). 
+This means that the model is able to accurately predict the obesity level of individuals based on the input variables.*/
+
+/*model testing logistic regression*/
+proc logistic data=test descending;
+   class  Gender Family_History High_Caloric_Food Eat_Between_Meals smoke  Monitor_Calories Drink_Alcohol 
+  Transportation_Used Obesity_Level ;
+  model Obesity_Level= Gender Family_History High_Caloric_Food Eat_Between_Meals smoke Monitor_Calories Drink_Alcohol 
+  Transportation_Used  weight Age Eat_Vegetables Main_Meals_Daily water_daily Physical_Activity  Tech_Device_Time/selection=backward link=logit;
+score data=test out=predicted_test ;
+run;
+
+/*predictions on test set*/
+data predicted_test;
+ set predicted_test;
+ if  P_normal<P_obese then predicted_obesity_level = "Obese"; 
+else predicted_obesity_level = "Normal_Weight"; 
+run;
+/* Calculate accuracy */
+data scored_test;
+set predicted_test;
+true_obesity_level = obesity_level;
+predict_obesity_level = predicted_obesity_level;
+run;
+data scored_test;
+  set scored_test;
+  if true_obesity_level = predict_obesity_level then correct_prediction = 1;
+  else correct_prediction = 0;
+run;
+/*check the accuracy*/
+proc means data=scored_test mean;
+  var correct_prediction;
+run;
+/*The accuracy of the model is 0.6917, which means that the model correctly predicts the Obesity level (Normal Weight or Obese) around 69.17% of the time.*/
+/*plot roc curve for test*/
+ods graphics on;
+title 'ROC curve for test';
+proc logistic data=predicted_test plots(only)=(roc);
+model obesity_level = Age Eat_Vegetables weight Main_Meals_Daily water_daily Physical_Activity  Tech_Device_Time;
+run;
+ods graphics off;
+/*The AUC value of 0.9812 indicates that the model has a high discriminatory power, as it is able to distinguish between the two classes (Normal Weight and Obese) very well.
+
+
+ CONCLUSION:
+
+The analysis revealed several key findings:
+
+Gender, age, eating vegetables, main meals daily, physical activity, tech device time, monitoring calories, transportation used, weight, and drinking alcohol were significant 
+predictors of obesity levels.
+Lifestyle factors such as eating between meals, monitoring calories, transportation mode, weight, and age were strongly associated with obesity levels.
+Female gender, older age, higher weight, lower frequency of eating vegetables, fewer main meals daily, less physical activity, more tech device time, not monitoring calories, and 
+using public transportation were all associated with a higher likelihood of obesity.
+
+RECOMMENDATIONS:
+
+Based on the findings of this analysis, the following recommendations can be made to address and prevent obesity levels:
+
+Promote healthy eating habits: Encouraging individuals to consume more vegetables, have regular main meals daily, and avoid high-caloric foods can help in maintaining a healthy weight.
+
+Increase physical activity: Encouraging individuals to engage in regular physical activity can help in reducing the risk of obesity and promoting overall health.
+
+Monitor weight and calorie intake: Individuals should be encouraged to monitor their weight and calories to ensure they are maintaining a healthy weight and diet.
+
+Promote active transportation: Encouraging individuals to use active modes of transportation such as walking or cycling can help in increasing physical activity levels and reducing the risk of obesity.
+
+Raise awareness: Public health campaigns and education programs should be implemented to raise awareness about the risks of obesity and the importance of healthy lifestyle choices.
+
+Personalized interventions: Healthcare providers should consider individual differences in lifestyle factors when designing personalized treatment plans for obesity prevention and management.
+
+Overall, the development of a predictive classification model for obesity levels based on lifestyle factors has the potential to significantly impact public health outcomes by identifying individuals at 
+risk of obesity and implementing targeted interventions for prevention and treatment. By addressing key lifestyle factors associated with obesity, we can work towards reducing the prevalence of 
+obesity and its related health complications.
+
+
+
+
+
+
